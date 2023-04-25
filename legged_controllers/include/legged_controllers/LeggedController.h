@@ -20,6 +20,11 @@
 #include "legged_controllers/SafetyChecker.h"
 #include "legged_controllers/visualization/LeggedSelfCollisionVisualization.h"
 
+#include <sensor_msgs/Imu.h>
+#include <cheetah_msgs/LegContact.h>
+#include <cheetah_msgs/LegsState.h>
+#include <cheetah_msgs/MotorState.h>
+
 namespace legged {
 using namespace ocs2;
 using namespace legged_robot;
@@ -70,10 +75,17 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   ros::Publisher observationPublisher_;
 
  private:
+    void publisherLegState(ros::Time time, vector_t jointPos, vector_t jointVel);
+    int count_{};
   std::thread mpcThread_;
   std::atomic_bool controllerRunning_{}, mpcRunning_{};
   benchmark::RepeatedTimer mpcTimer_;
   benchmark::RepeatedTimer wbcTimer_;
+
+  std::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::Imu>> imu_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::LegContact>> leg_contact_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>> leg_state_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::MotorState>> motor_pub_;
 };
 
 class LeggedCheaterController : public LeggedController {

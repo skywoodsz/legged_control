@@ -3,6 +3,7 @@
 //
 
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
+#include <pinocchio/algorithm/frames.hpp>
 
 #include "legged_controllers/LeggedController.h"
 
@@ -15,13 +16,14 @@
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 #include <ocs2_ros_interfaces/common/RosMsgConversions.h>
 #include <ocs2_ros_interfaces/synchronized_module/RosReferenceManager.h>
+#include <ocs2_robotic_tools/common/RotationDerivativesTransforms.h>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
 #include <legged_estimation/FromTopiceEstimate.h>
 #include <legged_estimation/LinearKalmanFilter.h>
 #include <legged_wbc/HierarchicalWbc.h>
-//#include <legged_wbc/WeightedWbc.h>
+#include <legged_wbc/WeightedWbc.h>
 
 #include <pluginlib/class_list_macros.hpp>
 
@@ -67,7 +69,7 @@ bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHand
   setupStateEstimate(taskFile, verbose);
 
   // Whole body control
-  wbc_ = std::make_shared<HierarchicalWbc>(leggedInterface_->getPinocchioInterface(), leggedInterface_->getCentroidalModelInfo(),
+  wbc_ = std::make_shared<WeightedWbc>(leggedInterface_->getPinocchioInterface(), leggedInterface_->getCentroidalModelInfo(),
                                        *eeKinematicsPtr_);
   wbc_->loadTasksSetting(taskFile, true);
 
@@ -181,7 +183,101 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
   currentObservation_.mode = stateEstimate_->getMode();
+
+  count_++;
+  if(count_ > 2)
+  {
+      count_ = 0;
+      // imu
+      if (imu_pub_->trylock()) {
+          imu_pub_->msg_.header.stamp = time;
+          imu_pub_->msg_.header.frame_id = "imu_link";
+
+          imu_pub_->msg_.orientation.x = quat.x();
+          imu_pub_->msg_.orientation.y = quat.y();
+          imu_pub_->msg_.orientation.z = quat.z();
+          imu_pub_->msg_.orientation.w = quat.w();
+
+          imu_pub_->msg_.linear_acceleration.x = linearAccel[0];
+          imu_pub_->msg_.linear_acceleration.y = linearAccel[1];
+          imu_pub_->msg_.linear_acceleration.z = linearAccel[2];
+
+          imu_pub_->msg_.angular_velocity.x = angularVel[0];
+          imu_pub_->msg_.angular_velocity.y = angularVel[1];
+          imu_pub_->msg_.angular_velocity.z = angularVel[2];
+
+          imu_pub_->unlockAndPublish();
+      }
+
+      // contact
+      if(leg_contact_pub_->trylock())
+      {
+          for (int i = 0; i < 4; ++i) {
+              leg_contact_pub_->msg_.contact_state[i] = contactFlag[i];
+          }
+          leg_contact_pub_->unlockAndPublish();
+      }
+
+      // motor
+      if(motor_pub_->trylock())
+      {
+          cheetah_msgs::MotorState motor_state;
+          motor_state.header.stamp = time;
+          for (int i = 8; i < 20; ++i)
+          {
+              motor_state.q[i] = jointPos[i];
+              motor_state.dq[i] = jointVel[i];
+          }
+          motor_pub_->msg_ = motor_state;
+          motor_pub_->unlockAndPublish();
+      }
+      publisherLegState(time, jointPos, jointVel);
+  }
+
 }
+
+void LeggedController::publisherLegState(ros::Time time, vector_t jointPos, vector_t jointVel) {
+    PinocchioInterface pinocchioInterface_(leggedInterface_->getPinocchioInterface());
+    const auto& model = pinocchioInterface_.getModel();
+    auto& data = pinocchioInterface_.getData();
+    size_t actuatedDofNum = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
+
+    vector_t qPino(leggedInterface_->getCentroidalModelInfo().generalizedCoordinatesNum);
+    vector_t vPino(leggedInterface_->getCentroidalModelInfo().generalizedCoordinatesNum);
+    qPino.setZero();
+    qPino.segment<3>(3) = measuredRbdState_.head<3>();  // Only set orientation, let position in origin.
+    qPino.tail(actuatedDofNum) = measuredRbdState_.segment(6, actuatedDofNum);
+
+    vPino.setZero();
+    vPino.segment<3>(3) = getEulerAnglesZyxDerivativesFromGlobalAngularVelocity<scalar_t>(
+            qPino.segment<3>(3),
+            measuredRbdState_.segment<3>(leggedInterface_->getCentroidalModelInfo().generalizedCoordinatesNum));  // Only set angular velocity, let linear velocity be zero
+    vPino.tail(actuatedDofNum) = measuredRbdState_.segment(6 + leggedInterface_->getCentroidalModelInfo().generalizedCoordinatesNum, actuatedDofNum);
+
+    pinocchio::forwardKinematics(model, data, qPino, vPino);
+    pinocchio::updateFramePlacements(model, data);
+
+    eeKinematicsPtr_->setPinocchioInterface(pinocchioInterface_);
+    const auto eePos = eeKinematicsPtr_->getPosition(vector_t());
+    const auto eeVel = eeKinematicsPtr_->getVelocity(vector_t(), vector_t());
+    
+    if(leg_state_pub_->trylock())
+    {
+        leg_state_pub_->msg_.header.stamp = time;
+        for (size_t leg = 0; leg < 4; leg++)
+        {
+            leg_state_pub_->msg_.bfoot_pos[leg].x = eePos[leg][0];
+            leg_state_pub_->msg_.bfoot_pos[leg].y = eePos[leg][1];
+            leg_state_pub_->msg_.bfoot_pos[leg].z = eePos[leg][2];
+
+            leg_state_pub_->msg_.bfoot_vel[leg].x = eeVel[leg][0];
+            leg_state_pub_->msg_.bfoot_vel[leg].y = eeVel[leg][1];
+            leg_state_pub_->msg_.bfoot_vel[leg].z = eeVel[leg][2];
+        }
+        leg_state_pub_->unlockAndPublish();
+    }
+}
+
 
 LeggedController::~LeggedController() {
   controllerRunning_ = false;
@@ -221,6 +317,16 @@ void LeggedController::setupMpc() {
   mpc_->getSolverPtr()->addSynchronizedModule(gaitReceiverPtr);
   mpc_->getSolverPtr()->setReferenceManager(rosReferenceManagerPtr);
   observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation", 1);
+
+  imu_pub_ =
+          std::make_shared<realtime_tools::RealtimePublisher<sensor_msgs::Imu>>(nh, "/dog/imu_data", 100);
+  leg_contact_pub_ =
+          std::make_shared<realtime_tools::RealtimePublisher<cheetah_msgs::LegContact>>(nh, "/dog/leg_contact", 100);
+  leg_state_pub_ =
+          std::make_shared<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>>(nh, "/dog/leg_state", 100);
+  motor_pub_ =
+          std::make_shared<realtime_tools::RealtimePublisher<cheetah_msgs::MotorState>>(nh, "/dog/motor_data", 100);
+
 }
 
 void LeggedController::setupMrt() {

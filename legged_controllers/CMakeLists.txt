@@ -15,6 +15,7 @@ find_package(catkin REQUIRED
         ocs2_legged_robot_ros
         ocs2_self_collision_visualization
         angles
+        cheetah_msgs
         )
 
 find_package(PkgConfig REQUIRED)
@@ -35,6 +36,7 @@ catkin_package(
         ocs2_legged_robot_ros
         ocs2_self_collision_visualization
         angles
+        cheetah_msgs
 )
 
 ###########
