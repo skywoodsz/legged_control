@@ -1,44 +1,109 @@
-## legged_wbc improved
+# legged_control
 
-Hi, , thanks for your open source. This submission is mainly aimed at wbc.
+## Introduction
 
-We find that in `legged_wbc`, the optimization variable is $[\dot{u}, F, \tau]^T$, whose dimension is 42. High-dimensional optimization variables increase the computing time of `legged_wbc`. In addition, we also found that only the desired acceleration was used in `legged_wbc`, without velocity and position errors, which may lead to imprecise performance of the robot. Therefore, we rewrote `legged_wbc` according to cited papers, and the improvements are as follows:
+legged_control is an NMPC-WBC legged robot control stack and framework based
+on [OCS2](https://github.com/leggedrobotics/ocs2) and [ros-control](http://wiki.ros.org/ros_control).
 
-1. Reduce the dimension of `legged_wbc` optimization variables. The original optimization variable is $[\dot{u}, F, \tau]^T$, and our improved optimization variable is $[\dot{u}, F]^T$. The dimension is reduced by 12 compared to before.
-2. Redesign the control law.  We added the position and speed errors to the control law. In addition, we designed height, attitude and xy position as three subtasks instead of synthesizing one big task.
+The advantage shows below:
 
-The performance comparison is as follows: We tested on NUC11PAHi7 with the robot running in gazebo. The maximum number of iterations for the QP solver was set to 50.
+1. To the author's best knowledge, this framework is probably the best-performing open-source legged robot MPC control
+    framework;
+2. You can deploy this framework in your A1 robot within a few hours;
+3. Thanks to the ros-control interface, you can easily use this framework for your custom robot.
 
-The original result was
+I believe this framework can provide a high-performance and easy-to-use model-based baseline for the legged robot
+community.
 
-```
-HierarchicalWbc
-Maximum : 4.57273[ms].
-Average : 0.531365[ms].
-gazebo realtime factor 0.86
+## Installation
 
-WeightedWbc
-Maximum : 4.49292[ms].
-Average : 0.330465[ms].
-gazebo realtime factor 0.93
-```
+### Source code
 
-Now the result was
+The source code is hosted on GitHub: [qiayuanliao/legged_control](https://github.com/qiayuanliao/legged_control).
 
 ```
-HierarchicalWbc
-Maximum : 2.3478[ms].
-Average : 0.392037[ms].
-gazebo realtime factor 0.93
-
-WeightedWbc
-Maximum : 5.57294[ms].
-Average : 0.216672[ms].
-gazebo realtime factor 0.95
+# Clone legged_control
+git clone git@github.com:qiayuanliao/legged_control.git
 ```
 
+### OCS2
 
+OCS2 is a huge monorepo; **DO NOT** try to compile the whole repo. You only need to compile `ocs2_legged_robot_ros` and
+its dependencies following the step below.
 
-[1] Bellicoso, C. D., Gehring, C., Hwangbo, J., Fankhauser, P., & Hutter, M. (2016, November). Perception-less terrain adaptation through whole body control and hierarchical optimization. In *2016 IEEE-RAS 16th International Conference on Humanoid Robots (Humanoids)* (pp. 558-564). IEEE.
+1. You are supposed to clone the OCS2, pinocchio, and hpp-fcl as described in the documentation of OCS2.
 
-[2] Bellicoso, C. D., Jenelten, F., Fankhauser, P., Gehring, C., Hwangbo, J., & Hutter, M. (2017, September). Dynamic locomotion and whole-body control for quadrupedal robots. In *2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)* (pp. 3359-3365). IEEE.
+    ```
+    # Clone OCS2
+    git clone git@github.com:leggedrobotics/ocs2.git
+    # Clone pinocchio
+    git clone --recurse-submodules https://github.com/leggedrobotics/pinocchio.git
+    # Clone hpp-fcl
+    git clone --recurse-submodules https://github.com/leggedrobotics/hpp-fcl.git
+    # Clone ocs2_robotic_assets
+    git clone https://github.com/leggedrobotics/ocs2_robotic_assets.git
+    # Install dependencies
+    sudo apt install liburdfdom-dev liboctomap-dev libassimp-dev
+    ```
+
+2. Compile the `ocs2_legged_robot_ros` package with [catkin tools](https://catkin-tools.readthedocs.io/en/latest/)
+    instead of `catkin_make`. It will take you about ten minutes.
+
+    ```
+    catkin config -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    catkin build ocs2_legged_robot_ros ocs2_self_collision_visualization
+    ```
+
+    Ensure you can command the ANYmal as shown in
+    the [document](https://leggedrobotics.github.io/ocs2/robotic_examples.html#legged-robot) and below.
+    ![](https://leggedrobotics.github.io/ocs2/_images/legged_robot.gif)
+
+### Build
+
+Build the source code of `legged_control` by:
+
+```
+catkin build legged_controllers legged_unitree_description
+```
+
+Build the simulation (**DO NOT** run on the onboard computer)
+
+```
+catkin build legged_gazebo
+```
+
+Build the hardware interface real robot. If you use your computer only for simulation, you **DO NOT** need to
+compile `legged_unitree_hw` (TODO: add a legged prefix to the package name)
+
+```
+catkin build legged_unitree_hw
+```
+
+## Quick Start
+
+```
+roslaunch legged_unitree_description empty_world.launch
+```
+
+```
+roslaunch legged_controllers load_controller.launch 
+```
+
+```
+sudo apt install ros-noetic-rqt-controller-manager
+rosrun rqt_controller_manager rqt_controller_manager
+```
+
+5. Set the gait in the terminal of `load_controller.launch`, then use RViz (you need to add what you want to display by
+    yourself) and control the robot by `cmd_vel` and `move_base_simple/goal`:
+
+![ezgif-5-684a1e1e23.gif](https://s2.loli.net/2022/07/27/lBzdeRa1gmvwx9C.gif)
+
+### Note
+
+- **THE GAIT AND THE GOAL ARE COMPLETELY DIFFERENT AND SEPARATED!**  You don't need to type stance while the robot is
+    lying on the ground **with four foot touching the ground**; it's completely wrong since the robot is already in the
+    stance gait.
+- The target_trajectories_publisher is for demonstration. You can combine the trajectory publisher and gait command into
+    a very simple node to add gamepad and keyboard input for different gaits and torso heights and to start/stop
+    controller (by ros service).
