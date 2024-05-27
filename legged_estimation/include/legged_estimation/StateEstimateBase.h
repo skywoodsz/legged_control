@@ -7,6 +7,8 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Imu.h>
+#include <cheetah_msgs/LegsState.h>
 #include <realtime_tools/realtime_publisher.h>
 
 #include <legged_common/hardware_interface/ContactSensorInterface.h>
@@ -26,7 +28,7 @@ class StateEstimateBase {
  public:
   StateEstimateBase(PinocchioInterface pinocchioInterface, CentroidalModelInfo info, const PinocchioEndEffectorKinematics& eeKinematics);
   virtual void updateJointStates(const vector_t& jointPos, const vector_t& jointVel);
-  virtual void updateContact(contact_flag_t contactFlag) { contactFlag_ = contactFlag; }
+  virtual void updateContact(contact_flag_t contactFlag) {contactFlag_ = contactFlag; }
   virtual void updateImu(const Eigen::Quaternion<scalar_t>& quat, const vector3_t& angularVelLocal, const vector3_t& linearAccelLocal,
                          const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance,
                          const matrix3_t& linearAccelCovariance);
@@ -35,14 +37,20 @@ class StateEstimateBase {
 
   size_t getMode() { return stanceLeg2ModeNumber(contactFlag_); }
 
+  void publishLegStateMsgs(const ros::Time& time, vector_t optimizedInput);
+  void publishImuMsgs(const ros::Time& time, const Eigen::Quaternion<scalar_t>& quat, const vector3_t& angularVelLocal, 
+    const vector3_t& linearAccelLocal, const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance, 
+    const matrix3_t& linearAccelCovariance);
+
  protected:
   void updateAngular(const vector3_t& zyx, const vector_t& angularVel);
   void updateLinear(const vector_t& pos, const vector_t& linearVel);
   void publishMsgs(const nav_msgs::Odometry& odom);
+  void updateBodyKinematics();
 
-  PinocchioInterface pinocchioInterface_;
+  PinocchioInterface pinocchioInterface_, pinocchioBodyInterface_;
   CentroidalModelInfo info_;
-  std::unique_ptr<PinocchioEndEffectorKinematics> eeKinematics_;
+  std::unique_ptr<PinocchioEndEffectorKinematics> eeKinematics_, eeBodyKinematics_;
 
   vector3_t zyxOffset_ = vector3_t::Zero();
   vector_t rbdState_;
@@ -53,6 +61,9 @@ class StateEstimateBase {
 
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odomPub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::PoseWithCovarianceStamped>> posePub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::Imu>> imu_pub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>> leg_pub_;
+ 
   ros::Time lastPub_;
 };
 

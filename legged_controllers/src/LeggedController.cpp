@@ -141,6 +141,8 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
 
   // Publish the observation. Only needed for the command interface
   observationPublisher_.publish(ros_msg_conversions::createObservationMsg(currentObservation_));
+
+  stateEstimate_->publishLegStateMsgs(time, optimizedInput);
 }
 
 void LeggedController::updateStateEstimation(const ros::Time& time, const ros::Duration& period) {
@@ -180,6 +182,8 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
   currentObservation_.mode = stateEstimate_->getMode();
+
+  stateEstimate_->publishImuMsgs(time, quat, angularVel, linearAccel, orientationCovariance, angularVelCovariance, linearAccelCovariance);
 }
 
 LeggedController::~LeggedController() {

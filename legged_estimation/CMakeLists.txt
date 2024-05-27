@@ -11,6 +11,7 @@ find_package(catkin REQUIRED
         legged_common
         realtime_tools
         tf2_ros
+        cheetah_msgs
         )
 
 find_package(PkgConfig REQUIRED)
@@ -27,6 +28,7 @@ catkin_package(
         legged_common
         realtime_tools
         tf2_ros
+        cheetah_msgs
 )
 
 ###########
