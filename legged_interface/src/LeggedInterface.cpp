@@ -140,7 +140,7 @@ void LeggedInterface::setupOptimalControlProblem(const std::string& taskFile, co
 /******************************************************************************************************/
 /******************************************************************************************************/
 void LeggedInterface::setupModel(const std::string& taskFile, const std::string& urdfFile, const std::string& referenceFile,
-                                 bool /*verbose*/) {
+                                 bool verbose) {
   // PinocchioInterface
   pinocchioInterfacePtr_ =
       std::make_unique<PinocchioInterface>(centroidal_model::createPinocchioInterface(urdfFile, modelSettings_.jointNames));
@@ -150,6 +150,25 @@ void LeggedInterface::setupModel(const std::string& taskFile, const std::string&
       *pinocchioInterfacePtr_, centroidal_model::loadCentroidalType(taskFile),
       centroidal_model::loadDefaultJointState(pinocchioInterfacePtr_->getModel().nq - 6, referenceFile), modelSettings_.contactNames3DoF,
       modelSettings_.contactNames6DoF);
+
+  if (verbose) {
+    std::cerr << "\033[32m \n #### pinocchio Info: ";
+    std::cerr << "\n #### =============================================================================\n \033[0m";
+    std::cerr << "joint name: \n";
+    for(auto name : pinocchioInterfacePtr_->getModel().names)
+      std::cerr<<name<<"\n";
+    std::cerr<<pinocchioInterfacePtr_->getModel().names.size()<<std::endl;
+
+    std::cerr << "\033[32m \n #### centroidal Model Info: ";
+    std::cerr << "\n #### =============================================================================\n \033[0m";
+    std::cerr << "generalizedCoordinatesNum: "<<centroidalModelInfo_.generalizedCoordinatesNum<<"\n";
+    std::cerr << "actuatedDofNum: "<<centroidalModelInfo_.actuatedDofNum<<"\n";
+    std::cerr << "stateDim: "<<centroidalModelInfo_.stateDim<<"\n";
+    std::cerr << "inputDim: "<<centroidalModelInfo_.inputDim<<"\n";
+    std::cerr << "robotMass: "<<centroidalModelInfo_.robotMass<<"\n";
+    std::cerr << "qPinocchioNominal: "<<centroidalModelInfo_.qPinocchioNominal.transpose()<<"\n";
+  }
+
 }
 
 /******************************************************************************************************/

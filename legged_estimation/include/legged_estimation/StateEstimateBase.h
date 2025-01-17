@@ -9,6 +9,7 @@
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <cheetah_msgs/LegsState.h>
+#include <geometry_msgs/WrenchStamped.h>
 #include <realtime_tools/realtime_publisher.h>
 
 #include <legged_common/hardware_interface/ContactSensorInterface.h>
@@ -27,7 +28,7 @@ using namespace legged_robot;
 class StateEstimateBase {
  public:
   StateEstimateBase(PinocchioInterface pinocchioInterface, CentroidalModelInfo info, const PinocchioEndEffectorKinematics& eeKinematics);
-  virtual void updateJointStates(const vector_t& jointPos, const vector_t& jointVel);
+  virtual void updateJointStates(const vector_t& jointPos, const vector_t& jointVel, const vector_t& jointTor);
   virtual void updateContact(contact_flag_t contactFlag) {contactFlag_ = contactFlag; }
   virtual void updateImu(const Eigen::Quaternion<scalar_t>& quat, const vector3_t& angularVelLocal, const vector3_t& linearAccelLocal,
                          const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance,
@@ -42,11 +43,14 @@ class StateEstimateBase {
     const vector3_t& linearAccelLocal, const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance, 
     const matrix3_t& linearAccelCovariance);
 
+  vector_t estContactForce(const ros::Time &time, const ros::Duration &period);
+
  protected:
   void updateAngular(const vector3_t& zyx, const vector_t& angularVel);
   void updateLinear(const vector_t& pos, const vector_t& linearVel);
   void publishMsgs(const nav_msgs::Odometry& odom);
   void updateBodyKinematics();
+  void publishEstContactForce(const ros::Time &time, vector_t contactForce);
 
   PinocchioInterface pinocchioInterface_, pinocchioBodyInterface_;
   CentroidalModelInfo info_;
@@ -59,12 +63,16 @@ class StateEstimateBase {
   vector3_t angularVelLocal_, linearAccelLocal_;
   matrix3_t orientationCovariance_, angularVelCovariance_, linearAccelCovariance_;
 
+  scalar_t cutoffFrequency_ = 150;
+  vector_t jointTor_;
+  vector_t pSCgZinvlast_;
+
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odomPub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::PoseWithCovarianceStamped>> posePub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<sensor_msgs::Imu>> imu_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>> leg_pub_;
- 
-  ros::Time lastPub_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> forcePub_[4];
+  ros::Time lastPub_, lastForcePub_;
 };
 
 template <typename T>

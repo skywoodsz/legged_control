@@ -146,7 +146,7 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
 }
 
 void LeggedController::updateStateEstimation(const ros::Time& time, const ros::Duration& period) {
-  vector_t jointPos(hybridJointHandles_.size()), jointVel(hybridJointHandles_.size());
+  vector_t jointPos(hybridJointHandles_.size()), jointVel(hybridJointHandles_.size()), jointTor(hybridJointHandles_.size());;
   contact_flag_t contacts;
   Eigen::Quaternion<scalar_t> quat;
   contact_flag_t contactFlag;
@@ -156,6 +156,7 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   for (size_t i = 0; i < hybridJointHandles_.size(); ++i) {
     jointPos(i) = hybridJointHandles_[i].getPosition();
     jointVel(i) = hybridJointHandles_[i].getVelocity();
+    jointTor(i) = hybridJointHandles_[i].getEffort();
   }
   for (size_t i = 0; i < contacts.size(); ++i) {
     contactFlag[i] = contactHandles_[i].isContact();
@@ -173,7 +174,7 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
     linearAccelCovariance(i) = imuSensorHandle_.getLinearAccelerationCovariance()[i];
   }
 
-  stateEstimate_->updateJointStates(jointPos, jointVel);
+  stateEstimate_->updateJointStates(jointPos, jointVel, jointTor);
   stateEstimate_->updateContact(contactFlag);
   stateEstimate_->updateImu(quat, angularVel, linearAccel, orientationCovariance, angularVelCovariance, linearAccelCovariance);
   measuredRbdState_ = stateEstimate_->update(time, period);
@@ -184,6 +185,8 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   currentObservation_.mode = stateEstimate_->getMode();
 
   stateEstimate_->publishImuMsgs(time, quat, angularVel, linearAccel, orientationCovariance, angularVelCovariance, linearAccelCovariance);
+
+  stateEstimate_->estContactForce(time, period);
 }
 
 LeggedController::~LeggedController() {
