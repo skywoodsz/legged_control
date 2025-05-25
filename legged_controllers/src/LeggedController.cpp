@@ -3,11 +3,17 @@
 //
 
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
+#include <pinocchio/algorithm/centroidal.hpp>
+#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
 
 #include "legged_controllers/LeggedController.h"
 
+#include <ocs2_robotic_tools/common/RotationTransforms.h>
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
+#include <ocs2_centroidal_model/ModelHelperFunctions.h>
 #include <ocs2_core/thread_support/ExecuteAndSleep.h>
 #include <ocs2_core/thread_support/SetThreadPriority.h>
 #include <ocs2_legged_robot_ros/gait/GaitReceiver.h>
@@ -141,8 +147,57 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
 
   // Publish the observation. Only needed for the command interface
   observationPublisher_.publish(ros_msg_conversions::createObservationMsg(currentObservation_));
-
   stateEstimate_->publishLegStateMsgs(time, optimizedInput);
+
+  _afterMPCUpdateStateEstimation(time, period, optimizedState, optimizedInput);
+}
+
+// update the predicted base velocity and acc with MPC command w.r.t. body frame
+void LeggedController::_afterMPCUpdateStateEstimation(const ros::Time& time, const ros::Duration& period, 
+  vector_t stateDesired,  vector_t inputDesired){
+  // In current state
+  vector3_t eulerAngles = currentObservation_.state.segment<3>(9);
+  matrix3_t rotation_matrix_from_body_to_world =
+  getRotationMatrixFromZyxEulerAngles<scalar_t>(eulerAngles);
+
+  Eigen::Matrix<scalar_t, 6, 1> basePoseDes;
+  Eigen::Matrix<scalar_t, 6, 1> baseVelocityDes;
+  Eigen::Matrix<scalar_t, 6, 1> baseAccelerationDes;
+  basePoseDes.setZero();
+  baseVelocityDes.setZero();
+  baseAccelerationDes.setZero();
+  vector_t jointAccelerations = vector_t::Zero(leggedInterface_->getCentroidalModelInfo().actuatedDofNum);
+  PinocchioInterface pinocchioInterfaceDesired = leggedInterface_->getPinocchioInterface();
+  CentroidalModelPinocchioMapping mapping(leggedInterface_->getCentroidalModelInfo());
+
+  const auto& model = pinocchioInterfaceDesired.getModel();
+  auto& data = pinocchioInterfaceDesired.getData();
+  mapping.setPinocchioInterface(pinocchioInterfaceDesired);
+
+  const auto qDesired = mapping.getPinocchioJointPosition(stateDesired);
+  pinocchio::forwardKinematics(model, data, qDesired);
+  pinocchio::computeJointJacobians(model, data, qDesired);
+  pinocchio::updateFramePlacements(model, data);
+  updateCentroidalDynamics(pinocchioInterfaceDesired, leggedInterface_->getCentroidalModelInfo(), qDesired);
+  const vector_t vDesired = mapping.getPinocchioJointVelocity(stateDesired, inputDesired);
+  pinocchio::forwardKinematics(model, data, qDesired, vDesired);
+  
+  rbdConversions_->computeBaseKinematicsFromCentroidalModel(
+    stateDesired, inputDesired, jointAccelerations, 
+    basePoseDes, baseVelocityDes, baseAccelerationDes); // in world frame
+  
+  SystemObservation mpcPrediction;
+  Eigen::Matrix<scalar_t, 6, 1> baseVelocityDesInBodyFrame;
+  Eigen::Matrix<scalar_t, 6, 1> baseAccelerationDesInBodyFrame;
+  baseVelocityDesInBodyFrame.head(3) = rotation_matrix_from_body_to_world.transpose() * baseVelocityDes.head(3);
+  baseVelocityDesInBodyFrame.tail(3) = rotation_matrix_from_body_to_world.transpose() * baseVelocityDes.tail(3);
+  baseAccelerationDesInBodyFrame.head(3) = rotation_matrix_from_body_to_world.transpose() * baseAccelerationDes.head(3);
+  baseAccelerationDesInBodyFrame.tail(3) = rotation_matrix_from_body_to_world.transpose() * baseAccelerationDes.tail(3);
+  mpcPrediction.time = currentObservation_.time;
+  mpcPrediction.state = baseVelocityDesInBodyFrame; // vel
+  mpcPrediction.input = baseAccelerationDesInBodyFrame; // acc
+
+  mpcPredictionStatePublisher_.publish(ros_msg_conversions::createObservationMsg(mpcPrediction));
 }
 
 void LeggedController::updateStateEstimation(const ros::Time& time, const ros::Duration& period) {
@@ -227,6 +282,7 @@ void LeggedController::setupMpc() {
   mpc_->getSolverPtr()->addSynchronizedModule(gaitReceiverPtr);
   mpc_->getSolverPtr()->setReferenceManager(rosReferenceManagerPtr);
   observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation", 1);
+  mpcPredictionStatePublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_prediction", 1);
 }
 
 void LeggedController::setupMrt() {

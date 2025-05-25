@@ -5,3 +5,10 @@
 *reference:* Contact Model Fusion for Event-Based Locomotion in Unstructured Terrains
 
 *Output topic:* `/LFLeg_force /LHLeg_force /RFLeg_force /RHLeg_force`
+
+### 2. State predeiction by the centrodial dynamics in body frame
+
+*Output topic:* `/legged_robot_mpc_prediction`
+data:
+- state: predicted base velocity. The order is vx, vy, vz, wx, wy, wz.
+- input predicted base acc. The order is acc_x, acc_y, acc_z, acc_wx, acc_wy, acc_wz.

@@ -42,7 +42,9 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   virtual void setupMpc();
   virtual void setupMrt();
   virtual void setupStateEstimate(const std::string& taskFile, bool verbose);
-
+  void _afterMPCUpdateStateEstimation(const ros::Time& time, const ros::Duration& period, 
+    vector_t stateDesired,  vector_t inputDesired);
+  
   // Interface
   std::shared_ptr<LeggedInterface> leggedInterface_;
   std::shared_ptr<PinocchioEndEffectorKinematics> eeKinematicsPtr_;
@@ -68,6 +70,7 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   std::shared_ptr<LeggedRobotVisualizer> robotVisualizer_;
   std::shared_ptr<LeggedSelfCollisionVisualization> selfCollisionVisualization_;
   ros::Publisher observationPublisher_;
+  ros::Publisher mpcPredictionStatePublisher_;
 
  private:
   std::thread mpcThread_;
