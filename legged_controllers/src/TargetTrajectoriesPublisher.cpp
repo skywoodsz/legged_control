@@ -3,6 +3,7 @@
 //
 
 #include "legged_controllers/TargetTrajectoriesPublisher.h"
+#include "legged_controllers/GaitJoyPublisher.h"
 
 #include <ocs2_core/Types.h>
 #include <ocs2_core/misc/LoadData.h>
@@ -98,8 +99,10 @@ int main(int argc, char** argv) {
   // Get node parameters
   std::string referenceFile;
   std::string taskFile;
+  std::string gaitCommandFile;
   nodeHandle.getParam("/referenceFile", referenceFile);
   nodeHandle.getParam("/taskFile", taskFile);
+  nodeHandle.getParam("/gaitCommandFile", gaitCommandFile);
 
   loadData::loadCppDataType(referenceFile, "comHeight", COM_HEIGHT);
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", DEFAULT_JOINT_STATE);
@@ -108,6 +111,9 @@ int main(int argc, char** argv) {
   loadData::loadCppDataType(taskFile, "mpc.timeHorizon", TIME_TO_TARGET);
 
   TargetTrajectoriesPublisher target_pose_command(nodeHandle, robotName, &goalToTargetTrajectories, &cmdVelToTargetTrajectories);
+
+  // Joy publisher for gait commands
+  GaitJoyPublisher gaitCommand(nodeHandle, gaitCommandFile, robotName, false);
 
   ros::spin();
   // Successful exit

@@ -67,6 +67,7 @@ target_compile_options(${PROJECT_NAME} PUBLIC ${OCS2_CXX_FLAGS})
 # Target trajectories publish node
 add_executable(legged_target_trajectories_publisher
         src/TargetTrajectoriesPublisher.cpp
+        src/GaitJoyPublisher.cpp
         )
 add_dependencies(legged_target_trajectories_publisher
         ${PROJECT_NAME}
