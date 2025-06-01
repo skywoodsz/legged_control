@@ -69,7 +69,13 @@ bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHand
   imuSensorHandle_ = robot_hw->get<hardware_interface::ImuSensorInterface>()->getHandle("unitree_imu");
 
   // State estimation
+  scalar_t roll = 0.0, pitch = 0.0, yaw = 0.0;
+  nh.getParam("/IMU_euler_angle_bias/roll", roll);
+  nh.getParam("/IMU_euler_angle_bias/pitch", pitch);
+  nh.getParam("/IMU_euler_angle_bias/yaw", yaw);
+  vector3_t zyxOffset(yaw, pitch, roll);
   setupStateEstimate(taskFile, verbose);
+  stateEstimate_->setZyxOffset(zyxOffset);
 
   // Whole body control
   wbc_ = std::make_shared<WeightedWbc>(leggedInterface_->getPinocchioInterface(), leggedInterface_->getCentroidalModelInfo(),

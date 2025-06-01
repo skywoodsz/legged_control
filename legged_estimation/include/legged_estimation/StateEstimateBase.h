@@ -33,6 +33,7 @@ class StateEstimateBase {
   virtual void updateImu(const Eigen::Quaternion<scalar_t>& quat, const vector3_t& angularVelLocal, const vector3_t& linearAccelLocal,
                          const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance,
                          const matrix3_t& linearAccelCovariance);
+  void setZyxOffset(const vector3_t& zyxOffset) { zyxOffset_ = zyxOffset; }
 
   virtual vector_t update(const ros::Time& time, const ros::Duration& period) = 0;
 
@@ -89,6 +90,26 @@ Eigen::Matrix<SCALAR_T, 3, 1> quatToZyx(const Eigen::Quaternion<SCALAR_T>& q) {
   zyx(1) = std::asin(as);
   zyx(2) = std::atan2(2 * (q.y() * q.z() + q.w() * q.x()), square(q.w()) - square(q.x()) - square(q.y()) + square(q.z()));
   return zyx;
+}
+
+template <typename T>
+Eigen::Quaternion<T> RpyToQuat(Eigen::Matrix<T, 3, 1> rpy)
+{
+  // Abbreviations for the various angular functions
+  double cy = cos(rpy(2) * 0.5);
+  double sy = sin(rpy(2) * 0.5);
+  double cp = cos(rpy(1) * 0.5);
+  double sp = sin(rpy(1) * 0.5);
+  double cr = cos(rpy(0) * 0.5);
+  double sr = sin(rpy(0) * 0.5);
+
+  Eigen::Quaternion<T> q;
+  q.w() = cr * cp * cy + sr * sp * sy;
+  q.x() = sr * cp * cy - cr * sp * sy;
+  q.y() = cr * sp * cy + sr * cp * sy;
+  q.z() = cr * cp * sy - sr * sp * cy;
+
+  return q;
 }
 
 }  // namespace legged

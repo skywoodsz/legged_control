@@ -12,3 +12,6 @@
 data:
 - state: predicted base velocity. The order is vx, vy, vz, wx, wy, wz.
 - input predicted base acc. The order is acc_x, acc_y, acc_z, acc_wx, acc_wy, acc_wz.
+
+### 3. IMU bias 
+Adjusting the zero bias of the IMU Euler angle in `legged_controllers/config/imu.yaml`

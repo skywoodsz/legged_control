@@ -1,0 +1,4 @@
+IMU_euler_angle_bias:
+  roll: 0.0
+  pitch: 0.0
+  yaw: 0.0

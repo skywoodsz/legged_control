@@ -152,7 +152,7 @@ void StateEstimateBase::updateJointStates(const vector_t& jointPos, const vector
 void StateEstimateBase::updateImu(const Eigen::Quaternion<scalar_t>& quat, const vector3_t& angularVelLocal,
                                   const vector3_t& linearAccelLocal, const matrix3_t& orientationCovariance,
                                   const matrix3_t& angularVelCovariance, const matrix3_t& linearAccelCovariance) {
-  quat_ = quat;
+                                    
   angularVelLocal_ = angularVelLocal;
   linearAccelLocal_ = linearAccelLocal;
   orientationCovariance_ = orientationCovariance;
@@ -160,6 +160,7 @@ void StateEstimateBase::updateImu(const Eigen::Quaternion<scalar_t>& quat, const
   linearAccelCovariance_ = linearAccelCovariance;
 
   vector3_t zyx = quatToZyx(quat) - zyxOffset_;
+  quat_ = RpyToQuat(vector3_t(zyx[2], zyx[1], zyx[0]));
   vector3_t angularVelGlobal = getGlobalAngularVelocityFromEulerAnglesZyxDerivatives<scalar_t>(
       zyx, getEulerAnglesZyxDerivativesFromLocalAngularVelocity<scalar_t>(quatToZyx(quat), angularVelLocal));
   updateAngular(zyx, angularVelGlobal);
