@@ -17,6 +17,7 @@ add_message_files(
         ArmState.msg
         MotorState.msg
         LegContact.msg
+        RobotDynamicState.msg
 )
 
 # Generate added messages and services with any dependencies listed here

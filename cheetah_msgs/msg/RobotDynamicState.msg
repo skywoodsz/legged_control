@@ -1,0 +1,6 @@
+Header header
+geometry_msgs/Vector3 base_linear_velocity
+geometry_msgs/Vector3 base_angular_velocity
+geometry_msgs/Vector3 base_linear_acceleration
+geometry_msgs/Vector3 base_angular_acceleration
+

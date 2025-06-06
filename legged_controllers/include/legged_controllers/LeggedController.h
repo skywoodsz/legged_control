@@ -20,6 +20,8 @@
 #include "legged_controllers/SafetyChecker.h"
 #include "legged_controllers/visualization/LeggedSelfCollisionVisualization.h"
 
+#include "cheetah_msgs/RobotDynamicState.h"
+
 namespace legged {
 using namespace ocs2;
 using namespace legged_robot;

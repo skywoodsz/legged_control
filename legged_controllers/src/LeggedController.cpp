@@ -192,18 +192,33 @@ void LeggedController::_afterMPCUpdateStateEstimation(const ros::Time& time, con
     stateDesired, inputDesired, jointAccelerations, 
     basePoseDes, baseVelocityDes, baseAccelerationDes); // in world frame
   
-  SystemObservation mpcPrediction;
+  // SystemObservation mpcPrediction;
   Eigen::Matrix<scalar_t, 6, 1> baseVelocityDesInBodyFrame;
   Eigen::Matrix<scalar_t, 6, 1> baseAccelerationDesInBodyFrame;
   baseVelocityDesInBodyFrame.head(3) = rotation_matrix_from_body_to_world.transpose() * baseVelocityDes.head(3);
   baseVelocityDesInBodyFrame.tail(3) = rotation_matrix_from_body_to_world.transpose() * baseVelocityDes.tail(3);
   baseAccelerationDesInBodyFrame.head(3) = rotation_matrix_from_body_to_world.transpose() * baseAccelerationDes.head(3);
   baseAccelerationDesInBodyFrame.tail(3) = rotation_matrix_from_body_to_world.transpose() * baseAccelerationDes.tail(3);
-  mpcPrediction.time = currentObservation_.time;
-  mpcPrediction.state = baseVelocityDesInBodyFrame; // vel
-  mpcPrediction.input = baseAccelerationDesInBodyFrame; // acc
+  // mpcPrediction.time = currentObservation_.time;
+  // mpcPrediction.state = baseVelocityDesInBodyFrame; // vel
+  // mpcPrediction.input = baseAccelerationDesInBodyFrame; // acc
+  cheetah_msgs::RobotDynamicState mpcPrediction;
+  mpcPrediction.header.stamp = time;
+  mpcPrediction.base_linear_velocity.x = baseVelocityDesInBodyFrame(0);
+  mpcPrediction.base_linear_velocity.y = baseVelocityDesInBodyFrame(1);
+  mpcPrediction.base_linear_velocity.z = baseVelocityDesInBodyFrame(2);
+  mpcPrediction.base_angular_velocity.x = baseVelocityDesInBodyFrame(3);
+  mpcPrediction.base_angular_velocity.y = baseVelocityDesInBodyFrame(4);
+  mpcPrediction.base_angular_velocity.z = baseVelocityDesInBodyFrame(5);
+  mpcPrediction.base_linear_acceleration.x = baseAccelerationDesInBodyFrame(0);
+  mpcPrediction.base_linear_acceleration.y = baseAccelerationDesInBodyFrame(1);
+  mpcPrediction.base_linear_acceleration.z = baseAccelerationDesInBodyFrame(2);
+  mpcPrediction.base_angular_acceleration.x = baseAccelerationDesInBodyFrame(3);
+  mpcPrediction.base_angular_acceleration.y = baseAccelerationDesInBodyFrame(4);
+  mpcPrediction.base_angular_acceleration.z = baseAccelerationDesInBodyFrame(5);
 
-  mpcPredictionStatePublisher_.publish(ros_msg_conversions::createObservationMsg(mpcPrediction));
+  // mpcPredictionStatePublisher_.publish(ros_msg_conversions::createObservationMsg(mpcPrediction));
+  mpcPredictionStatePublisher_.publish(mpcPrediction);
 }
 
 void LeggedController::updateStateEstimation(const ros::Time& time, const ros::Duration& period) {
@@ -288,7 +303,8 @@ void LeggedController::setupMpc() {
   mpc_->getSolverPtr()->addSynchronizedModule(gaitReceiverPtr);
   mpc_->getSolverPtr()->setReferenceManager(rosReferenceManagerPtr);
   observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation", 1);
-  mpcPredictionStatePublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_prediction", 1);
+  // mpcPredictionStatePublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_prediction", 1);
+  mpcPredictionStatePublisher_ = nh.advertise<cheetah_msgs::RobotDynamicState>(robotName + "_mpc_prediction", 1);
 }
 
 void LeggedController::setupMrt() {

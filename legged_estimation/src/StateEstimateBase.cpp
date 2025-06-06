@@ -14,6 +14,7 @@
 #include <ocs2_centroidal_model/FactoryFunctions.h>
 #include <ocs2_legged_robot/common/Types.h>
 #include <ocs2_robotic_tools/common/RotationDerivativesTransforms.h>
+#include <ocs2_robotic_tools/common/RotationTransforms.h>
 
 namespace legged {
 using namespace legged_robot;
@@ -30,6 +31,8 @@ StateEstimateBase::StateEstimateBase(PinocchioInterface pinocchioInterface, Cent
   pSCgZinvlast_.resize(info_.generalizedCoordinatesNum);
   pSCgZinvlast_.setZero();
   jointTor_.resize(info.actuatedDofNum);
+  contactForceObs_.resize(info_.numThreeDofContacts * 3);
+  contactForceObs_.setZero();
 
   ros::NodeHandle nh;
   odomPub_.reset(new realtime_tools::RealtimePublisher<nav_msgs::Odometry>(nh, "odom", 10));
@@ -37,10 +40,10 @@ StateEstimateBase::StateEstimateBase(PinocchioInterface pinocchioInterface, Cent
   imu_pub_.reset(new realtime_tools::RealtimePublisher<sensor_msgs::Imu>(nh, "/dog/imu_data", 10));
   leg_pub_.reset(new realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>(nh, "/dog/leg_state", 10));
 
-  forcePub_[0] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/LFLeg_force", 10);
-  forcePub_[1] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/RFLeg_force", 10);
-  forcePub_[2] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/LHLeg_force", 10);
-  forcePub_[3] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/RHLeg_force", 10);
+  // forcePub_[0] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/LFLeg_force", 10);
+  // forcePub_[1] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/RFLeg_force", 10);
+  // forcePub_[2] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/LHLeg_force", 10);
+  // forcePub_[3] = std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>(nh, "/RHLeg_force", 10);
 }
 
 // Ref: Contact Model Fusion for Event-Based Locomotion in Unstructured Terrains
@@ -114,10 +117,12 @@ vector_t StateEstimateBase::estContactForce(const ros::Time &time, const ros::Du
 
     estContactWrech = S_JT.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(S_tau);
     contactForce.segment<3>(i * 3) = estContactWrech.head(3);
+
+    contactForceObs_.segment<3>(i * 3) = estContactWrech.head(3);
   }
 
   // Publish
-  publishEstContactForce(time, contactForce);
+  // publishEstContactForce(time, contactForce);
 
   return contactForce;
 }
@@ -202,13 +207,9 @@ void StateEstimateBase::updateBodyKinematics(){
   vector_t qPino(info_.generalizedCoordinatesNum);
   vector_t vPino(info_.generalizedCoordinatesNum);
   qPino.setZero();
-  qPino.segment<3>(3) = rbdState_.head<3>();  // Only set orientation, let position in origin.
   qPino.tail(actuatedDofNum) = rbdState_.segment(6, actuatedDofNum);
 
   vPino.setZero();
-  vPino.segment<3>(3) = getEulerAnglesZyxDerivativesFromGlobalAngularVelocity<scalar_t>(
-      qPino.segment<3>(3),
-      rbdState_.segment<3>(info_.generalizedCoordinatesNum));  // Only set angular velocity, let linear velocity be zero
   vPino.tail(actuatedDofNum) = rbdState_.segment(6 + info_.generalizedCoordinatesNum, actuatedDofNum);
 
   pinocchio::forwardKinematics(model, data, qPino, vPino);
@@ -233,8 +234,6 @@ void StateEstimateBase::publishImuMsgs(const ros::Time& time, const Eigen::Quate
     imu_pub_->msg_.orientation.z = quat.z();
     imu_pub_->msg_.orientation.w = quat.w();
 
-    //TODO: publish covariance
-
     imu_pub_->unlockAndPublish();
   }
 }
@@ -244,17 +243,36 @@ void StateEstimateBase::publishLegStateMsgs(const ros::Time& time, vector_t opti
   eeBodyKinematics_->setPinocchioInterface(pinocchioBodyInterface_);
   std::vector<vector3_t> eePos = eeBodyKinematics_->getPosition(vector_t());
   std::vector<vector3_t> eeVel = eeBodyKinematics_->getVelocity(vector_t(), vector_t());
+  vector3_t eulerAngles = rbdState_.head(3);
+  matrix3_t rotation_matrix_from_body_to_world =
+    getRotationMatrixFromZyxEulerAngles<scalar_t>(eulerAngles);
 
+  vector_t contactForceObsInBody = vector_t::Zero(12);
+  vector_t contactForceMPCInBody = vector_t::Zero(12);
+  for (size_t i = 0; i < 4; i++) {
+    contactForceObsInBody.segment<3>(i * 3) = rotation_matrix_from_body_to_world.transpose() * 
+      contactForceObs_.segment<3>(i * 3);
+    contactForceMPCInBody.segment<3>(i * 3) = rotation_matrix_from_body_to_world.transpose() *
+      optimizedInput.segment<3>(i * 3);
+  }
+  
   if(leg_pub_->trylock()){
     leg_pub_->msg_.header.frame_id = "base";
     leg_pub_->msg_.header.stamp = time;
 
     for (size_t i = 0; i < 4; i++)
     {
-      leg_pub_->msg_.foot_contact[i].z = contactFlag_[i];
-      leg_pub_->msg_.foot_force[i].x = optimizedInput[i*3];
-      leg_pub_->msg_.foot_force[i].y = optimizedInput[i*3+1];
-      leg_pub_->msg_.foot_force[i].z = optimizedInput[i*3+2];
+
+      leg_pub_->msg_.foot_contact[i].data = contactFlag_[i];
+
+      leg_pub_->msg_.foot_force_prediction[i].x = contactForceMPCInBody[i*3];
+      leg_pub_->msg_.foot_force_prediction[i].y = contactForceMPCInBody[i*3+1];
+      leg_pub_->msg_.foot_force_prediction[i].z = contactForceMPCInBody[i*3+2];
+
+      leg_pub_->msg_.foot_force_observation[i].x = contactForceObsInBody[i * 3];
+      leg_pub_->msg_.foot_force_observation[i].y = contactForceObsInBody[i * 3 + 1];
+      leg_pub_->msg_.foot_force_observation[i].z = contactForceObsInBody[i * 3 + 2];
+
       leg_pub_->msg_.bfoot_pos[i].x = eePos[i][0];
       leg_pub_->msg_.bfoot_pos[i].y = eePos[i][1];
       leg_pub_->msg_.bfoot_pos[i].z = eePos[i][2];

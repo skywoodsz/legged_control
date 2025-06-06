@@ -67,6 +67,7 @@ class StateEstimateBase {
   scalar_t cutoffFrequency_ = 150;
   vector_t jointTor_;
   vector_t pSCgZinvlast_;
+  vector_t contactForceObs_;
 
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odomPub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::PoseWithCovarianceStamped>> posePub_;
